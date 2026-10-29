@@ -52,44 +52,6 @@ static int validate_entry(const CebEntry *entry, size_t file_size)
            entry->size <= file_size - entry->offset;
 }
 
-static void founder_keystream(const uint8_t *key,
-                              size_t key_size,
-                              uint8_t *stream,
-                              size_t stream_size)
-{
-    uint8_t state[256] = {0};
-    uint8_t i = 0;
-    uint8_t j = 0;
-    size_t n;
-    if (!stream || stream_size == 0u) goto done;
-    memset(stream, 0, stream_size);
-    if (!key || key_size == 0u) goto done;
-    for (n = 0; n < sizeof(state); ++n) state[n] = (uint8_t)n;
-    for (n = 0; n < sizeof(state); ++n) {
-        j = (uint8_t)(j + state[n] + (uint8_t)(key[n % key_size] | 0xaau));
-        {
-            uint8_t temporary = state[n];
-            state[n] = state[j];
-            state[j] = temporary;
-        }
-    }
-    for (n = 0; n < stream_size; ++n) {
-        uint8_t old_si;
-        uint8_t index;
-        i = (uint8_t)(i + 1u);
-        old_si = state[i];
-        j = (uint8_t)(j + old_si);
-        state[i] = state[j];
-        state[j] = state[old_si];
-        index = (uint8_t)(state[old_si] + state[i]);
-        stream[n] = state[index];
-    }
-done:
-    qw_crypto_secure_zero(state, sizeof(state));
-    qw_crypto_secure_zero(&i, sizeof(i));
-    qw_crypto_secure_zero(&j, sizeof(j));
-}
-
 static void set_note(QwConvertReport *report, const char *message)
 {
     if (report && message) {
@@ -110,8 +72,11 @@ static int ceb_layout_has_signature(const uint8_t *bytes,
         layout->rc4_key.size == 0u) {
         return 0;
     }
-    founder_keystream(bytes + layout->rc4_key.offset,
-                      layout->rc4_key.size, stream, sizeof(stream));
+    if (qw_crypto_founder_ceb_keystream(bytes + layout->rc4_key.offset,
+                                        layout->rc4_key.size, stream,
+                                        sizeof(stream)) != QW_CRYPTO_OK) {
+        return 0;
+    }
     for (i = 0; i < sizeof(signature); ++i) {
         if ((uint8_t)(bytes[layout->pdf.offset + i] ^ stream[i]) != signature[i]) {
             matches = 0;
@@ -244,8 +209,12 @@ static int ceb_decrypt_to_pdf(const uint8_t *bytes,
     }
     output = (uint8_t *)malloc(layout->pdf.size);
     if (!output) return QW_PAGE_ERR_OUT_OF_MEMORY;
-    founder_keystream(bytes + layout->rc4_key.offset,
-                      layout->rc4_key.size, stream, sizeof(stream));
+    if (qw_crypto_founder_ceb_keystream(bytes + layout->rc4_key.offset,
+                                        layout->rc4_key.size, stream,
+                                        sizeof(stream)) != QW_CRYPTO_OK) {
+        free(output);
+        return QW_PAGE_ERR_FORMAT;
+    }
     for (offset = 0; offset < layout->pdf.size;) {
         size_t chunk = layout->pdf.size - offset;
         size_t i;
