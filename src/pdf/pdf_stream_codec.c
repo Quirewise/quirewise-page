@@ -1,9 +1,10 @@
 #include "pdf_stream_codec.h"
 
+#include <quirewise/compression.h>
+
 #include <limits.h>
 #include <stdlib.h>
 #include <string.h>
-#include <zlib.h>
 
 static int pdf_predictor_parameters(unsigned colors,
                                     unsigned bits_per_component,
@@ -178,13 +179,11 @@ int qw_pdf_flate_decode(const uint8_t *input,
                         uint8_t **out_data,
                         size_t *out_size)
 {
-    z_stream stream;
     uint8_t *output = NULL;
     size_t capacity;
     size_t output_size = 0u;
     size_t row_size = 0u;
     size_t bytes_per_pixel = 0u;
-    int zrc;
     int ok = 0;
     if (!out_data || !out_size || (!input && input_size) ||
         input_size > UINT_MAX || !max_output_size || predictor < 1u ||
@@ -203,16 +202,19 @@ int qw_pdf_flate_decode(const uint8_t *input,
     if (!output) {
         return 0;
     }
-    memset(&stream, 0, sizeof(stream));
-    stream.next_in = (Bytef *)(uintptr_t)input;
-    stream.avail_in = (uInt)input_size;
-    if (inflateInit(&stream) != Z_OK) {
-        goto cleanup;
-    }
     for (;;) {
-        size_t available;
-        size_t produced;
-        if (output_size == capacity) {
+        QwCompressionInflateStatus inflate_status =
+            qw_compression_inflate_zlib_bounded(input, input_size, output,
+                                                capacity, &output_size);
+        if (inflate_status == QW_COMPRESSION_INFLATE_OK) {
+            ok = 1;
+            break;
+        }
+        if (inflate_status != QW_COMPRESSION_INFLATE_OUTPUT_FULL ||
+            capacity == max_output_size) {
+            break;
+        }
+        {
             size_t grown_capacity = capacity > max_output_size / 2u
                 ? max_output_size : capacity * 2u;
             uint8_t *grown;
@@ -221,30 +223,12 @@ int qw_pdf_flate_decode(const uint8_t *input,
             }
             grown = (uint8_t *)realloc(output, grown_capacity);
             if (!grown) {
-                (void)inflateEnd(&stream);
                 goto cleanup;
             }
             output = grown;
             capacity = grown_capacity;
         }
-        available = capacity - output_size;
-        if (available > UINT_MAX) {
-            available = UINT_MAX;
-        }
-        stream.next_out = output + output_size;
-        stream.avail_out = (uInt)available;
-        zrc = inflate(&stream, Z_NO_FLUSH);
-        produced = available - stream.avail_out;
-        output_size += produced;
-        if (zrc == Z_STREAM_END) {
-            ok = 1;
-            break;
-        }
-        if (zrc != Z_OK || (produced == 0u && stream.avail_in == 0u)) {
-            break;
-        }
     }
-    (void)inflateEnd(&stream);
     if (!ok) {
         goto cleanup;
     }

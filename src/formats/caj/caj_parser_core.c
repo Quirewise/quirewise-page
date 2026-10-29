@@ -2,10 +2,11 @@
 
 #include "../../core/byte_utils.h"
 
+#include <quirewise/compression.h>
+
 #include <limits.h>
 #include <stdlib.h>
 #include <string.h>
-#include <zlib.h>
 
 typedef struct QwCajClassicOutline {
     size_t title_offset;
@@ -237,7 +238,6 @@ QwCajStatus qw_caj_decode_text_section(const uint8_t *section,
 {
     size_t marker = SIZE_MAX;
     uint32_t expanded;
-    uLongf target_size;
     uint8_t *buffer;
     if (!section || !out_text || !out_size || !owned)
         return QW_CAJ_ERR_INVALID_ARGUMENT;
@@ -259,14 +259,11 @@ QwCajStatus qw_caj_decode_text_section(const uint8_t *section,
     if (!caj_range_ok(section_size, marker + 16u,
                       section_size - (marker + 16u)))
         return QW_CAJ_ERR_FORMAT;
-    if (section_size - marker - 16u > ULONG_MAX)
-        return QW_CAJ_ERR_UNSUPPORTED;
     buffer = (uint8_t *)malloc(expanded ? (size_t)expanded : 1u);
     if (!buffer) return QW_CAJ_ERR_OUT_OF_MEMORY;
-    target_size = (uLongf)expanded;
-    if (uncompress(buffer, &target_size, section + marker + 16u,
-                   (uLong)(section_size - marker - 16u)) != Z_OK ||
-        target_size != expanded) {
+    if (!qw_compression_inflate_zlib(section + marker + 16u,
+                                     section_size - marker - 16u,
+                                     buffer, (size_t)expanded)) {
         free(buffer);
         return QW_CAJ_ERR_DECODE;
     }
