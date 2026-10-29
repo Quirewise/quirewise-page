@@ -5,6 +5,7 @@
 
 #include "ceb_internal.h"
 #include "quirewise/ceb.h"
+#include <quirewise/crypto.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -56,10 +57,13 @@ static void founder_keystream(const uint8_t *key,
                               uint8_t *stream,
                               size_t stream_size)
 {
-    uint8_t state[256];
+    uint8_t state[256] = {0};
     uint8_t i = 0;
     uint8_t j = 0;
     size_t n;
+    if (!stream || stream_size == 0u) goto done;
+    memset(stream, 0, stream_size);
+    if (!key || key_size == 0u) goto done;
     for (n = 0; n < sizeof(state); ++n) state[n] = (uint8_t)n;
     for (n = 0; n < sizeof(state); ++n) {
         j = (uint8_t)(j + state[n] + (uint8_t)(key[n % key_size] | 0xaau));
@@ -80,6 +84,10 @@ static void founder_keystream(const uint8_t *key,
         index = (uint8_t)(state[old_si] + state[i]);
         stream[n] = state[index];
     }
+done:
+    qw_crypto_secure_zero(state, sizeof(state));
+    qw_crypto_secure_zero(&i, sizeof(i));
+    qw_crypto_secure_zero(&j, sizeof(j));
 }
 
 static void set_note(QwConvertReport *report, const char *message)
@@ -93,9 +101,10 @@ static int ceb_layout_has_signature(const uint8_t *bytes,
                                     size_t size,
                                     const CebLayout *layout)
 {
-    uint8_t stream[5];
+    uint8_t stream[5] = {0};
     static const uint8_t signature[5] = {'%', 'P', 'D', 'F', '-'};
     size_t i;
+    int matches = 1;
     if (!bytes || !layout || !validate_entry(&layout->pdf, size) ||
         !validate_entry(&layout->rc4_key, size) || layout->pdf.size < 5u ||
         layout->rc4_key.size == 0u) {
@@ -105,10 +114,12 @@ static int ceb_layout_has_signature(const uint8_t *bytes,
                       layout->rc4_key.size, stream, sizeof(stream));
     for (i = 0; i < sizeof(signature); ++i) {
         if ((uint8_t)(bytes[layout->pdf.offset + i] ^ stream[i]) != signature[i]) {
-            return 0;
+            matches = 0;
+            break;
         }
     }
-    return 1;
+    qw_crypto_secure_zero(stream, sizeof(stream));
+    return matches;
 }
 
 static int ceb_parse_modern_layout(const uint8_t *bytes,
@@ -138,7 +149,8 @@ static int ceb_parse_modern_layout(const uint8_t *bytes,
         entry.offset = (size_t)qw_read_u32_le(item);
         entry.size = (size_t)qw_read_u32_le(item + 4u);
         entry.type = item[8];
-        entry.found = entry.size > 0u && validate_entry(&entry, size);
+        entry.found = entry.size > 0u && entry.offset <= size &&
+                      entry.size <= size - entry.offset;
         sections[i] = entry;
         if (!entry.found) continue;
         if (!layout->pdf.found || entry.size > layout->pdf.size) {
@@ -177,7 +189,8 @@ static int ceb_parse_modern_layout(const uint8_t *bytes,
         }
     }
     layout->modern = 1;
-    return layout->pdf.found && layout->rc4_key.found;
+    return layout->pdf.found && layout->rc4_key.found &&
+           (!layout->symmetric_key.found || layout->has_algorithm);
 }
 
 static int ceb_parse_legacy_layout(const uint8_t *bytes,
@@ -219,7 +232,7 @@ static int ceb_decrypt_to_pdf(const uint8_t *bytes,
                               size_t *out_size,
                               QwConvertReport *report)
 {
-    uint8_t stream[CEB_CIPHER_BLOCK_SIZE];
+    uint8_t stream[CEB_CIPHER_BLOCK_SIZE] = {0};
     uint8_t *output;
     size_t offset;
     int rc;
@@ -244,10 +257,13 @@ static int ceb_decrypt_to_pdf(const uint8_t *bytes,
         offset += chunk;
     }
     if (memcmp(output, "%PDF-", 5u) != 0) {
+        qw_crypto_secure_zero(output, layout->pdf.size);
         free(output);
+        qw_crypto_secure_zero(stream, sizeof(stream));
         set_note(report, "Founder CEB outer body did not decrypt to a PDF");
         return QW_PAGE_ERR_DECODE;
     }
+    qw_crypto_secure_zero(stream, sizeof(stream));
 
     rc = qw_ceb_decrypt_internal_pdf(
         output, layout->pdf.size,
@@ -255,6 +271,7 @@ static int ceb_decrypt_to_pdf(const uint8_t *bytes,
         layout->symmetric_key.found ? layout->symmetric_key.size : 0u,
         layout->has_algorithm, layout->algorithm_id, report);
     if (rc != QW_PAGE_OK) {
+        qw_crypto_secure_zero(output, layout->pdf.size);
         free(output);
         return rc;
     }

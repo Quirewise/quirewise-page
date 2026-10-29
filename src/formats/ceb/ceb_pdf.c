@@ -1,9 +1,8 @@
 #include "ceb_internal.h"
 
+#include <quirewise/crypto.h>
+
 #include <limits.h>
-#include <openssl/bn.h>
-#include <openssl/crypto.h>
-#include <openssl/des.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -180,65 +179,23 @@ static int ceb_hex_to_bytes(const char *hex, uint8_t *out, size_t out_size)
     return 1;
 }
 
-static BIGNUM *ceb_bn_from_little_endian(const uint8_t *bytes, size_t size)
-{
-    uint8_t reversed[CEB_RSA_BYTES];
-    size_t i;
-    BIGNUM *value;
-    if (!bytes || !size || size > sizeof(reversed) || size > INT_MAX) return NULL;
-    for (i = 0; i < size; ++i) reversed[i] = bytes[size - i - 1u];
-    value = BN_bin2bn(reversed, (int)size, NULL);
-    OPENSSL_cleanse(reversed, sizeof(reversed));
-    return value;
-}
-
-static int ceb_bn_to_little_endian(const BIGNUM *value,
-                                  uint8_t *bytes,
-                                  size_t size)
-{
-    uint8_t big_endian[CEB_RSA_BYTES];
-    size_t i;
-    int written;
-    if (!value || !bytes || size > sizeof(big_endian) || size > INT_MAX) return 0;
-    written = BN_bn2binpad(value, big_endian, (int)size);
-    if (written != (int)size) {
-        OPENSSL_cleanse(big_endian, sizeof(big_endian));
-        return 0;
-    }
-    for (i = 0; i < size; ++i) bytes[i] = big_endian[size - i - 1u];
-    OPENSSL_cleanse(big_endian, sizeof(big_endian));
-    return 1;
-}
-
 static int ceb_unwrap_rsa_key(const uint8_t wrapped[CEB_RSA_BYTES],
                               uint8_t key[CEB_3DES_KEY_BYTES])
 {
-    uint8_t modulus_le[CEB_RSA_BYTES];
-    uint8_t exponent_le[CEB_RSA_BYTES];
-    uint8_t clear[CEB_RSA_BYTES];
-    BIGNUM *modulus = NULL;
-    BIGNUM *exponent = NULL;
-    BIGNUM *ciphertext = NULL;
-    BIGNUM *plaintext = NULL;
-    BN_CTX *context = NULL;
-    uint32_t key_size;
+    uint8_t modulus_le[CEB_RSA_BYTES] = {0};
+    uint8_t exponent_le[CEB_RSA_BYTES] = {0};
+    uint8_t clear[CEB_RSA_BYTES] = {0};
+    uint32_t key_size = 0;
     int ok = 0;
 
+    if (key) qw_crypto_secure_zero(key, CEB_3DES_KEY_BYTES);
     if (!wrapped || !key ||
         !ceb_hex_to_bytes(ceb_rsa_modulus_hex, modulus_le, sizeof(modulus_le)) ||
         !ceb_hex_to_bytes(ceb_rsa_exponent_hex, exponent_le, sizeof(exponent_le))) {
         goto done;
     }
-    modulus = ceb_bn_from_little_endian(modulus_le, sizeof(modulus_le));
-    exponent = ceb_bn_from_little_endian(exponent_le, sizeof(exponent_le));
-    ciphertext = ceb_bn_from_little_endian(wrapped, CEB_RSA_BYTES);
-    plaintext = BN_new();
-    context = BN_CTX_new();
-    if (!modulus || !exponent || !ciphertext || !plaintext || !context ||
-        BN_is_zero(modulus) || BN_is_zero(exponent) ||
-        BN_cmp(ciphertext, modulus) >= 0 ||
-        BN_mod_exp(plaintext, ciphertext, exponent, modulus, context) != 1 ||
-        !ceb_bn_to_little_endian(plaintext, clear, sizeof(clear))) {
+    if (qw_crypto_rsa_mod_exp_512_le(wrapped, exponent_le, modulus_le,
+                                     clear) != QW_CRYPTO_OK) {
         goto done;
     }
     key_size = (uint32_t)clear[0] | ((uint32_t)clear[1] << 8) |
@@ -248,14 +205,11 @@ static int ceb_unwrap_rsa_key(const uint8_t wrapped[CEB_RSA_BYTES],
     ok = 1;
 
 done:
-    OPENSSL_cleanse(modulus_le, sizeof(modulus_le));
-    OPENSSL_cleanse(exponent_le, sizeof(exponent_le));
-    OPENSSL_cleanse(clear, sizeof(clear));
-    BN_clear_free(modulus);
-    BN_clear_free(exponent);
-    BN_clear_free(ciphertext);
-    BN_clear_free(plaintext);
-    BN_CTX_free(context);
+    if (!ok && key) qw_crypto_secure_zero(key, CEB_3DES_KEY_BYTES);
+    qw_crypto_secure_zero(modulus_le, sizeof(modulus_le));
+    qw_crypto_secure_zero(exponent_le, sizeof(exponent_le));
+    qw_crypto_secure_zero(clear, sizeof(clear));
+    qw_crypto_secure_zero(&key_size, sizeof(key_size));
     return ok;
 }
 
@@ -264,6 +218,7 @@ static int ceb_resolve_3des_key(const uint8_t *key_blob,
                                 uint32_t algorithm,
                                 uint8_t key[CEB_3DES_KEY_BYTES])
 {
+    if (key) qw_crypto_secure_zero(key, CEB_3DES_KEY_BYTES);
     if (!key_blob || !key || key_blob_size == 0u) return 0;
     if ((algorithm & 0x80000000u) != 0u) {
         if (key_blob_size != CEB_RSA_BYTES) return 0;
@@ -460,48 +415,36 @@ static int ceb_pdf_stream_extent(const uint8_t *pdf,
     return 1;
 }
 
-static void ceb_pdf_crypt_stream(uint8_t *bytes,
-                                 size_t size,
-                                 const uint8_t key[CEB_3DES_KEY_BYTES],
-                                 uint32_t algorithm)
+static int ceb_pdf_crypt_stream(uint8_t *bytes,
+                                size_t size,
+                                const uint8_t key[CEB_3DES_KEY_BYTES],
+                                uint32_t algorithm)
 {
-    DES_cblock key1;
-    DES_cblock key2;
-    DES_cblock key3;
-    DES_key_schedule schedule1;
-    DES_key_schedule schedule2;
-    DES_key_schedule schedule3;
+    uint8_t iv[8] = {0};
     size_t offset;
-    memcpy(key1, key, sizeof(key1));
-    memcpy(key2, key + sizeof(key1), sizeof(key2));
-    memcpy(key3, key + sizeof(key1) + sizeof(key2), sizeof(key3));
-    DES_set_key_unchecked(&key1, &schedule1);
-    DES_set_key_unchecked(&key2, &schedule2);
-    DES_set_key_unchecked(&key3, &schedule3);
+    int rc = QW_PAGE_OK;
+    if (!key || (size != 0u && !bytes)) return QW_PAGE_ERR_INVALID_ARGUMENT;
     for (offset = 0; offset < size;) {
-        DES_cblock iv;
         size_t chunk = size - offset;
-        int num = 0;
+        QwCryptoStatus crypto_status;
         if (chunk > CEB_STREAM_REKEY_BYTES) chunk = CEB_STREAM_REKEY_BYTES;
         memcpy(iv, key, sizeof(iv));
         if ((algorithm & 0x7fffffffu) == CEB_ALGORITHM_3DES_CFB64) {
-            DES_ede3_cfb64_encrypt(bytes + offset, bytes + offset,
-                                   (long)chunk, &schedule1, &schedule2,
-                                   &schedule3, &iv, &num, DES_DECRYPT);
+            crypto_status = qw_crypto_3des_cfb64_decrypt(
+                key, iv, bytes + offset, chunk);
         } else {
-            DES_ede3_ofb64_encrypt(bytes + offset, bytes + offset,
-                                  (long)chunk, &schedule1, &schedule2,
-                                  &schedule3, &iv, &num);
+            crypto_status = qw_crypto_3des_ofb64_crypt(
+                key, iv, bytes + offset, chunk);
         }
-        OPENSSL_cleanse(iv, sizeof(iv));
+        qw_crypto_secure_zero(iv, sizeof(iv));
+        if (crypto_status != QW_CRYPTO_OK) {
+            rc = QW_PAGE_ERR_DECODE;
+            break;
+        }
         offset += chunk;
     }
-    OPENSSL_cleanse(key1, sizeof(key1));
-    OPENSSL_cleanse(key2, sizeof(key2));
-    OPENSSL_cleanse(key3, sizeof(key3));
-    OPENSSL_cleanse(&schedule1, sizeof(schedule1));
-    OPENSSL_cleanse(&schedule2, sizeof(schedule2));
-    OPENSSL_cleanse(&schedule3, sizeof(schedule3));
+    qw_crypto_secure_zero(iv, sizeof(iv));
+    return rc;
 }
 
 static int ceb_pdf_decrypt_streams(uint8_t *pdf,
@@ -532,7 +475,11 @@ static int ceb_pdf_decrypt_streams(uint8_t *pdf,
             ceb_integer_map_free(&length_map);
             return QW_PAGE_ERR_DECODE;
         }
-        ceb_pdf_crypt_stream(pdf + data_start, data_size, key, algorithm);
+        rc = ceb_pdf_crypt_stream(pdf + data_start, data_size, key, algorithm);
+        if (rc != QW_PAGE_OK) {
+            ceb_integer_map_free(&length_map);
+            return rc;
+        }
         ++count;
         scan = endstream_end;
         object_start = scan;
@@ -604,19 +551,21 @@ int qw_ceb_decrypt_internal_pdf(uint8_t *pdf,
                                 uint32_t algorithm,
                                 QwConvertReport *report)
 {
-    uint8_t key[CEB_3DES_KEY_BYTES];
+    uint8_t key[CEB_3DES_KEY_BYTES] = {0};
     uint32_t cipher;
     size_t streams = 0;
     int removed = 0;
     int malformed = 0;
     int rc;
     if (!pdf || pdf_size < 5u || memcmp(pdf, "%PDF-", 5u) != 0) {
-        return QW_PAGE_ERR_FORMAT;
+        rc = QW_PAGE_ERR_FORMAT;
+        goto done;
     }
     if (!has_algorithm) {
         if (report) snprintf(report->note, sizeof(report->note),
                              "legacy CEB body decrypted to PDF; no inner cipher metadata");
-        return QW_PAGE_OK;
+        rc = QW_PAGE_OK;
+        goto done;
     }
     cipher = algorithm & 0x7fffffffu;
     if (cipher == CEB_ALGORITHM_NONE) {
@@ -625,41 +574,42 @@ int qw_ceb_decrypt_internal_pdf(uint8_t *pdf,
             if (report) snprintf(report->note, sizeof(report->note),
                                  malformed ? "CEB PDF /Encrypt reference is malformed"
                                            : "CEB PDF /Encrypt reference could not be removed");
-            return rc;
+            goto done;
         }
         if (report) snprintf(report->note, sizeof(report->note),
                              "CEB outer body decrypted; algorithm ID marks PDF streams as unencrypted; %s",
                              removed ? "/Encrypt reference blanked"
                                      : "no /Encrypt reference found");
-        return QW_PAGE_OK;
+        rc = QW_PAGE_OK;
+        goto done;
     }
     if (cipher != CEB_ALGORITHM_3DES_OFB &&
         cipher != CEB_ALGORITHM_3DES_CFB64) {
         if (report) snprintf(report->note, sizeof(report->note),
                              "unsupported CEB stream cipher ID %u", cipher);
-        return QW_PAGE_ERR_UNSUPPORTED;
+        rc = QW_PAGE_ERR_UNSUPPORTED;
+        goto done;
     }
     if (!ceb_resolve_3des_key(key_blob, key_blob_size, algorithm, key)) {
         if (report) snprintf(report->note, sizeof(report->note),
                              "CEB 3DES key is malformed or RSA unwrap failed");
-        OPENSSL_cleanse(key, sizeof(key));
-        return QW_PAGE_ERR_DECODE;
+        rc = QW_PAGE_ERR_DECODE;
+        goto done;
     }
     rc = ceb_pdf_decrypt_streams(pdf, pdf_size, key, algorithm, &streams);
-    OPENSSL_cleanse(key, sizeof(key));
     if (rc != QW_PAGE_OK) {
         if (report) {
             snprintf(report->note, sizeof(report->note),
                      "CEB PDF stream boundary scan failed");
         }
-        return rc;
+        goto done;
     }
     rc = ceb_pdf_blank_encrypt_reference(pdf, pdf_size, &removed, &malformed);
     if (rc != QW_PAGE_OK) {
         if (report) snprintf(report->note, sizeof(report->note),
                              malformed ? "CEB PDF /Encrypt reference is malformed"
                                        : "CEB PDF /Encrypt reference could not be removed");
-        return rc;
+        goto done;
     }
     if (report) {
         snprintf(report->note, sizeof(report->note),
@@ -667,5 +617,9 @@ int qw_ceb_decrypt_internal_pdf(uint8_t *pdf,
                  streams, removed ? "/Encrypt reference blanked"
                                   : "no /Encrypt reference found");
     }
-    return QW_PAGE_OK;
+    rc = QW_PAGE_OK;
+
+done:
+    qw_crypto_secure_zero(key, sizeof(key));
+    return rc;
 }
