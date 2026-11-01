@@ -237,6 +237,9 @@ int qw_webp_animation_create_borrowed(const void *data, size_t size,
                                      size_t *out_frame_count);
 int qw_webp_animation_read(QwWebPAnimation *animation, size_t index,
                            QwPageImage *out_page);
+int qw_webp_animation_frame_duration(const QwWebPAnimation *animation,
+                                     size_t index,
+                                     uint32_t *out_duration_ms);
 void qw_webp_animation_free(QwWebPAnimation *animation);
 
 #endif
