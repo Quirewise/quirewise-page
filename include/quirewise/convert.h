@@ -3,7 +3,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
-#include "page_status.h"
+#include "quirewise/page_status.h"
 
 #ifdef __cplusplus
 extern "C" {

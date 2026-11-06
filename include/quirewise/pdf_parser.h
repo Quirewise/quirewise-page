@@ -1,7 +1,7 @@
 #ifndef QUIREWISE_PDF_PARSER_H
 #define QUIREWISE_PDF_PARSER_H
 
-#include "page_status.h"
+#include "quirewise/page_status.h"
 
 #include <stddef.h>
 #include <stdint.h>
