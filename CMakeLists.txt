@@ -60,4 +60,12 @@ if(BUILD_TESTING)
     target_link_libraries(quirewise_page_fuzz_smoke PRIVATE Quirewise::Page)
     add_test(NAME quirewise_page_fuzz_smoke
         COMMAND quirewise_page_fuzz_smoke)
+
+    add_executable(quirewise_page_djvu_decode_test tests/djvu_decode_test.c)
+    target_compile_features(quirewise_page_djvu_decode_test PRIVATE c_std_11)
+    target_compile_definitions(quirewise_page_djvu_decode_test PRIVATE
+        QUIREWISE_DJVU_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/tests/data/djvu")
+    target_link_libraries(quirewise_page_djvu_decode_test PRIVATE Quirewise::Page)
+    add_test(NAME quirewise_page_djvu_decode
+        COMMAND quirewise_page_djvu_decode_test)
 endif()

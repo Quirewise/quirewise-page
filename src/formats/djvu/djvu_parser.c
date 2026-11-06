@@ -33,6 +33,7 @@ static int djvu_chunk_end(const uint8_t *data,
         return 0;
     }
     *out_end = payload_offset + (size_t)length;
+    if (((size_t)length & 1u) != 0u && *out_end < limit) ++*out_end;
     return 1;
 }
 
