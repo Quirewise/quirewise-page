@@ -52,3 +52,12 @@ if(QUIREWISE_BUILD_SHARED AND WIN32)
         quirewise_page
         PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS ON)
 endif()
+
+include(CTest)
+if(BUILD_TESTING)
+    add_executable(quirewise_page_fuzz_smoke tests/page_fuzz_smoke.c)
+    target_compile_features(quirewise_page_fuzz_smoke PRIVATE c_std_11)
+    target_link_libraries(quirewise_page_fuzz_smoke PRIVATE Quirewise::Page)
+    add_test(NAME quirewise_page_fuzz_smoke
+        COMMAND quirewise_page_fuzz_smoke)
+endif()
