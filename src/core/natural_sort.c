@@ -1,9 +1,9 @@
-#include "natural_sort.h"
+﻿#include "natural_sort.h"
 #include "byte_utils.h"
 
 #include <string.h>
 
-int qw_natural_name_compare(const char *left, const char *right)
+int qw_page_natural_name_compare(const char *left, const char *right)
 {
     const unsigned char *a = (const unsigned char *)left;
     const unsigned char *b = (const unsigned char *)right;

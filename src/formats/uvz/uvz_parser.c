@@ -1,4 +1,4 @@
-#include "quirewise/uvz_parser.h"
+﻿#include "quirewise/uvz_parser.h"
 
 #include "../archive/zip_native.h"
 #include "../../core/natural_sort.h"
@@ -90,7 +90,7 @@ static int uvz_compare_pages(const void *left, const void *right)
     unsigned ar = uvz_entry_rank(a->name);
     unsigned br = uvz_entry_rank(b->name);
     int order = (ar > br) - (ar < br);
-    if (!order) order = qw_natural_name_compare(a->name, b->name);
+    if (!order) order = qw_page_natural_name_compare(a->name, b->name);
     if (!order) order = (a->archive_index > b->archive_index) -
                         (a->archive_index < b->archive_index);
     return order;
