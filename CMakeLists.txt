@@ -1,5 +1,11 @@
 cmake_minimum_required(VERSION 3.21)
 project(QuirewisePage VERSION 0.1.0 LANGUAGES C)
+option(QUIREWISE_BUILD_SHARED "Build Quirewise libraries as shared libraries" OFF)
+if(QUIREWISE_BUILD_SHARED)
+    set(QW_LIBRARY_TYPE SHARED)
+else()
+    set(QW_LIBRARY_TYPE STATIC)
+endif()
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 if(NOT TARGET Quirewise::Image)
@@ -15,7 +21,7 @@ if(NOT TARGET Quirewise::Compression)
     find_package(QuirewiseCompression CONFIG REQUIRED)
 endif()
 file(GLOB_RECURSE QW_SOURCES CONFIGURE_DEPENDS src/*.c src/*.cpp)
-add_library(quirewise_page STATIC ${QW_SOURCES})
+add_library(quirewise_page ${QW_LIBRARY_TYPE} ${QW_SOURCES})
 add_library(Quirewise::Page ALIAS quirewise_page)
 set_target_properties(quirewise_page PROPERTIES EXPORT_NAME Page POSITION_INDEPENDENT_CODE ON)
 target_compile_features(quirewise_page PUBLIC c_std_11)
@@ -26,6 +32,11 @@ target_include_directories(quirewise_page PUBLIC
 target_link_libraries(quirewise_page PRIVATE
     Quirewise::Image Quirewise::Archive Quirewise::Crypto
     Quirewise::Compression)
+# PDF/CAJ geometry needs libm; PUBLIC so static consumers inherit it and the
+# shared library records a real DT_NEEDED instead of exporting undefined
+# references.
+target_link_libraries(quirewise_page PUBLIC
+    "$<$<NOT:$<PLATFORM_ID:Windows>>:m>")
 install(TARGETS quirewise_page EXPORT QuirewisePageTargets
     ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
     LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
@@ -35,3 +46,9 @@ install(EXPORT QuirewisePageTargets FILE QuirewisePageTargets.cmake NAMESPACE Qu
 configure_package_config_file(cmake/QuirewisePageConfig.cmake.in "${CMAKE_CURRENT_BINARY_DIR}/QuirewisePageConfig.cmake" INSTALL_DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/QuirewisePage")
 write_basic_package_version_file("${CMAKE_CURRENT_BINARY_DIR}/QuirewisePageConfigVersion.cmake" VERSION "${PROJECT_VERSION}" COMPATIBILITY SameMajorVersion)
 install(FILES "${CMAKE_CURRENT_BINARY_DIR}/QuirewisePageConfig.cmake" "${CMAKE_CURRENT_BINARY_DIR}/QuirewisePageConfigVersion.cmake" DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/QuirewisePage")
+
+if(QUIREWISE_BUILD_SHARED AND WIN32)
+    set_target_properties(
+        quirewise_page
+        PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS ON)
+endif()
