@@ -46,18 +46,18 @@ static const char *uvz_basename(const char *name)
     return base;
 }
 
+/* Length of a basename without its final extension. */
+static size_t uvz_stem_length(const char *base)
+{
+    const char *dot = strrchr(base, '.');
+    return (dot && dot != base) ? (size_t)(dot - base) : strlen(base);
+}
+
 static unsigned uvz_entry_rank(const char *name)
 {
     const char *stem = uvz_basename(name);
-    size_t length = strlen(stem);
+    size_t length = uvz_stem_length(stem);
     int first;
-    if (length >= 5u && stem[length - 5u] == '.' &&
-        uvz_ascii_lower((unsigned char)stem[length - 4u]) == 'p' &&
-        uvz_ascii_lower((unsigned char)stem[length - 3u]) == 'a' &&
-        uvz_ascii_lower((unsigned char)stem[length - 2u]) == 'g' &&
-        uvz_ascii_lower((unsigned char)stem[length - 1u]) == 'e') {
-        length -= 5u;
-    }
     if (length == 6u && uvz_equal_prefix(stem, "cov001")) return 0u;
     if (uvz_equal_prefix(stem, "bok")) return 1u;
     if (uvz_equal_prefix(stem, "leg")) return 2u;
@@ -73,14 +73,28 @@ static unsigned uvz_entry_rank(const char *name)
     return 50u;
 }
 
+/* SSReader containers store one page per member named NNNNNN.pdg; older rips
+ * used the same layout with the ".page" alias. Everything else in the archive
+ * (Bookinfo.dat, BookContents.dat, ssct.data) is metadata, not a page. */
 static int uvz_has_page_suffix(const char *name)
 {
-    size_t length = strlen(name);
-    return length >= 5u && name[length - 5u] == '.' &&
-        uvz_ascii_lower((unsigned char)name[length - 4u]) == 'p' &&
-        uvz_ascii_lower((unsigned char)name[length - 3u]) == 'a' &&
-        uvz_ascii_lower((unsigned char)name[length - 2u]) == 'g' &&
-        uvz_ascii_lower((unsigned char)name[length - 1u]) == 'e';
+    const char *dot = strrchr(name, '.');
+    if (!dot || dot == name) {
+        return 0;
+    }
+    ++dot;
+    if (uvz_ascii_lower((unsigned char)dot[0]) == 'p' &&
+        uvz_ascii_lower((unsigned char)dot[1]) == 'd' &&
+        uvz_ascii_lower((unsigned char)dot[2]) == 'g' && dot[3] == '\0') {
+        return 1;
+    }
+    if (uvz_ascii_lower((unsigned char)dot[0]) == 'p' &&
+        uvz_ascii_lower((unsigned char)dot[1]) == 'a' &&
+        uvz_ascii_lower((unsigned char)dot[2]) == 'g' &&
+        uvz_ascii_lower((unsigned char)dot[3]) == 'e' && dot[4] == '\0') {
+        return 1;
+    }
+    return 0;
 }
 
 static int uvz_compare_pages(const void *left, const void *right)

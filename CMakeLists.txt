@@ -80,5 +80,13 @@ if(BUILD_TESTING)
         Quirewise::Page)
     add_test(NAME quirewise_page_ceb_validation
         COMMAND quirewise_page_ceb_validation_test)
+
+    add_executable(quirewise_page_uvz_parser_test tests/uvz_parser_test.c)
+    target_compile_features(quirewise_page_uvz_parser_test PRIVATE c_std_11)
+    target_include_directories(quirewise_page_uvz_parser_test PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests")
+    target_link_libraries(quirewise_page_uvz_parser_test PRIVATE Quirewise::Page)
+    add_test(NAME quirewise_page_uvz_parser
+        COMMAND quirewise_page_uvz_parser_test)
 endif()
 target_link_libraries(quirewise_page PUBLIC Quirewise::Runtime)
