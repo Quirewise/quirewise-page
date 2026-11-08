@@ -24,14 +24,14 @@ static int g_failures;
 /* Expected page order: cover, title page, table of contents, foreword, body,
  * attachment, back cover - the SSReader member naming convention. */
 static const char *const kExpectedOrder[] = {
-    "cov001", "bok001", "!00001", "!00002", "fow001",
+    "cov001", "bok001", "fow001", "!00001", "!00002",
     "000001", "000002", "000003", "000004", "000005",
     "000006", "000007", "000008", "000009", "000010", "000011",
     "att001", "cov002",
 };
 
 static const char *const kExpectedBytes[] = {
-    "COVER", "TITLE", "TOC00001", "TOC00002", "FORE00001",
+    "COVER", "TITLE", "FORE00001", "TOC00001", "TOC00002",
     "PAGE000001", "PAGE000002", "PAGE000003", "PAGE000004", "PAGE000005",
     "PAGE000006", "PAGE000007", "PAGE000008", "PAGE000009", "PAGE000010",
     "PAGE000011",

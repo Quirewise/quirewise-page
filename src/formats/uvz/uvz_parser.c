@@ -61,9 +61,13 @@ static unsigned uvz_entry_rank(const char *name)
     if (length == 6u && uvz_equal_prefix(stem, "cov001")) return 0u;
     if (uvz_equal_prefix(stem, "bok")) return 1u;
     if (uvz_equal_prefix(stem, "leg")) return 2u;
-    if (stem[0] == '!') return 3u;
+    /* Front matter text (preface, editorial notes, imprint) precedes the
+     * table of contents in the physical books this corpus came from: fow001 is
+     * 凡例说明 in the index volume and the editorial page in volume 128, while
+     * !NNNNN is the 目录 itself. */
     if (uvz_equal_prefix(stem, "fow") || uvz_equal_prefix(stem, "pre"))
-        return 4u;
+        return 3u;
+    if (stem[0] == '!') return 4u;
     first = (unsigned char)stem[0];
     if (first >= '0' && first <= '9') return 10u;
     if (uvz_equal_prefix(stem, "att") || uvz_equal_prefix(stem, "app"))
