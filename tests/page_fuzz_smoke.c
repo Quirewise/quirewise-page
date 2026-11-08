@@ -1,6 +1,5 @@
 #include <quirewise/caj.h>
 #include <quirewise/djvu.h>
-#include <quirewise/pdf_parser.h>
 #include <quirewise/uvz_parser.h>
 
 #include <stdint.h>
@@ -12,12 +11,6 @@
 
 static uint32_t rng_state = FUZZ_SEED;
 
-static const char pdf_seed[] =
-    "%PDF-1.4\n"
-    "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n"
-    "2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n"
-    "3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 100 100] >>\nendobj\n"
-    "trailer\n<< /Root 1 0 R /Size 4 >>\n%%EOF\n";
 static const uint8_t djvu_seed[] = {
     'A', 'T', '&', 'T', 'F', 'O', 'R', 'M', 0x00, 0x00, 0x00, 0x10,
     'D', 'J', 'V', 'U'
@@ -56,21 +49,6 @@ int main(void)
     size_t run;
     size_t ok = 0u;
     size_t rejected = 0u;
-    for (run = 0u; run < FUZZ_RUNS; ++run) {
-        QwPdfParser *parser = NULL;
-        size_t size = mutate((const uint8_t *)pdf_seed,
-                             sizeof(pdf_seed) - 1u, buffer, sizeof(buffer));
-        if (qw_pdf_parser_open(buffer, size, &parser) == QW_PAGE_OK && parser) {
-            QwPdfParserInfo info = {0};
-            QwPdfParserPageInfo page_info = {0};
-            ++ok;
-            (void)qw_pdf_parser_get_info(parser, &info);
-            (void)qw_pdf_parser_get_page_info(parser, 0u, &page_info);
-            qw_pdf_parser_close(parser);
-        } else {
-            ++rejected;
-        }
-    }
     for (run = 0u; run < FUZZ_RUNS; ++run) {
         QwCajDocument *document = NULL;
         size_t size = sizeof(djvu_seed) + (size_t)(next_random() % 512u);

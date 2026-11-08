@@ -1,5 +1,6 @@
 #include "ceb_internal.h"
 
+#include <quirewise/compression.h>
 #include <quirewise/crypto.h>
 
 #include <limits.h>
@@ -447,6 +448,27 @@ static int ceb_pdf_crypt_stream(uint8_t *bytes,
     return rc;
 }
 
+/* True when the object dictionary in [start, end) declares a Flate filter.
+ * PDF admits the /Fl abbreviation as well as the full name. */
+static int ceb_dict_has_flate(const uint8_t *pdf, size_t start, size_t end)
+{
+    size_t position = start;
+    while (position + 2u < end) {
+        if (pdf[position] == '/') {
+            if (position + 12u <= end &&
+                memcmp(pdf + position, "/FlateDecode", 12u) == 0) {
+                return 1;
+            }
+            if (position + 3u <= end && memcmp(pdf + position, "/Fl", 3u) == 0 &&
+                (position + 3u == end || pdf[position + 3u] <= 32u)) {
+                return 1;
+            }
+        }
+        ++position;
+    }
+    return 0;
+}
+
 static int ceb_pdf_decrypt_streams(uint8_t *pdf,
                                    size_t pdf_size,
                                    const uint8_t key[CEB_3DES_KEY_BYTES],
@@ -479,6 +501,22 @@ static int ceb_pdf_decrypt_streams(uint8_t *pdf,
         if (rc != QW_PAGE_OK) {
             ceb_integer_map_free(&length_map);
             return rc;
+        }
+        /* A wrong key produces random bytes but leaves the file structure
+         * intact, so the outer call would report success and hand a broken
+         * PDF to the caller. Flate streams give a cheap integrity signal:
+         * decrypting with the right key yields a valid zlib member. */
+        if (data_size && ceb_dict_has_flate(pdf, object_start, keyword)) {
+            uint8_t probe[64];
+            size_t produced = 0u;
+            QwCompressionInflateStatus status =
+                qw_compression_inflate_zlib_bounded(
+                    pdf + data_start, data_size, probe, sizeof(probe),
+                    &produced);
+            if (status == QW_COMPRESSION_INFLATE_ERROR) {
+                ceb_integer_map_free(&length_map);
+                return QW_PAGE_ERR_DECODE;
+            }
         }
         ++count;
         scan = endstream_end;

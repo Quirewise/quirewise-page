@@ -68,4 +68,12 @@ if(BUILD_TESTING)
     target_link_libraries(quirewise_page_djvu_decode_test PRIVATE Quirewise::Page)
     add_test(NAME quirewise_page_djvu_decode
         COMMAND quirewise_page_djvu_decode_test)
+
+    add_executable(quirewise_page_ceb_validation_test
+        tests/ceb_validation_test.c)
+    target_compile_features(quirewise_page_ceb_validation_test PRIVATE c_std_11)
+    target_link_libraries(quirewise_page_ceb_validation_test PRIVATE
+        Quirewise::Page)
+    add_test(NAME quirewise_page_ceb_validation
+        COMMAND quirewise_page_ceb_validation_test)
 endif()
