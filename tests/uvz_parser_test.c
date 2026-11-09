@@ -9,6 +9,8 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "../src/core/format_registry.h"
+
 #include "uvz_fixture.h"
 
 static int g_failures;
@@ -101,10 +103,22 @@ static void test_invalid_input(void)
     qw_uvz_page_data_free(NULL);
 }
 
+static void test_format_descriptor(void)
+{
+    CHECK(qw_format_uvz.id == QW_FORMAT_UVZ);
+    CHECK(qw_format_uvz.name != NULL);
+    CHECK(qw_format_uvz.probe != NULL);
+    CHECK(qw_format_uvz.probe(kUvzFixture, sizeof(kUvzFixture)) == 1);
+    CHECK(qw_format_uvz.probe("not a container", 15u) == 0);
+    CHECK(qw_format_uvz.probe(kUvzFixture, 0u) == 0);
+    CHECK(qw_format_uvz.probe(NULL, 0u) == 0);
+}
+
 int main(void)
 {
     test_page_order_and_bytes();
     test_invalid_input();
+    test_format_descriptor();
     if (g_failures) {
         fprintf(stderr, "%d check(s) failed\n", g_failures);
         return 1;

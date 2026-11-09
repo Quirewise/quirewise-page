@@ -1,6 +1,7 @@
-﻿#include "quirewise/uvz_parser.h"
+#include "quirewise/uvz_parser.h"
 
 #include "../archive/zip_native.h"
+#include "../../core/format_registry.h"
 #include "../../core/natural_sort.h"
 
 #include <stdlib.h>
@@ -275,3 +276,37 @@ void qw_uvz_document_close(QwUvzDocument *document)
     uvz_document_release_contents(document);
     free(document);
 }
+/* Format-registry probe: a UVZ container is a ZIP whose members are SSReader
+ * page images. The descriptor mirrors qw_format_ceb/qw_format_djvu - this
+ * package owns the format but the shared registry does not link it, so it is
+ * exported for consumers that resolve formats themselves. */
+static int uvz_format_probe(const void *data, size_t size)
+{
+    QwUvzDocument *document = NULL;
+    int supported;
+    if (qw_uvz_document_open(data, size, &document) != QW_UVZ_OK || !document) {
+        return 0;
+    }
+    supported = qw_uvz_document_page_count(document) > 0u;
+    qw_uvz_document_close(document);
+    return supported;
+}
+
+#if !defined(QUIREWISE_STANDALONE_UVZ)
+const QwFormatDescriptor qw_format_uvz = {
+    .id = QW_FORMAT_UVZ,
+    .name = "SSReader UVZ",
+    .capabilities = QW_FORMAT_CAP_PAGE_IMAGES | QW_FORMAT_CAP_MULTI_PAGE |
+                    QW_FORMAT_CAP_ARCHIVE_PROBE,
+    .probe = uvz_format_probe,
+    .open_memory = NULL,
+    .open_layout = NULL,
+    .open_audio = NULL,
+    .max_input_bytes = QW_FORMAT_INPUT_LIMIT_DEFAULT,
+    .resource_profile = QW_FORMAT_INPUT_RESOURCE_PROFILE_DEFAULT,
+    .convert_to_pdf = NULL,
+    .open_spreadsheet = NULL,
+    .open_subtitle = NULL,
+    .open_data = NULL
+};
+#endif
