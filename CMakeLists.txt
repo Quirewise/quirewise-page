@@ -116,5 +116,19 @@ if(BUILD_TESTING)
         QUIREWISE_DJVU_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/tests/data/djvu")
     add_test(NAME quirewise_page_djvu_bzz
         COMMAND quirewise_page_djvu_bzz_test)
+
+    add_executable(quirewise_page_djvu_jb2_test
+        tests/djvu_jb2_test.c
+        src/formats/djvu/djvu_jb2.c
+        src/formats/djvu/djvu_zp.c
+        src/formats/djvu/djvu_zp_table.c
+        src/formats/djvu/djvu_iff.c)
+    target_compile_features(quirewise_page_djvu_jb2_test PRIVATE c_std_11)
+    target_include_directories(quirewise_page_djvu_jb2_test PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/formats/djvu")
+    target_compile_definitions(quirewise_page_djvu_jb2_test PRIVATE
+        QUIREWISE_DJVU_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/tests/data/djvu")
+    add_test(NAME quirewise_page_djvu_jb2
+        COMMAND quirewise_page_djvu_jb2_test)
 endif()
 target_link_libraries(quirewise_page PUBLIC Quirewise::Runtime)
