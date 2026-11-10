@@ -88,5 +88,33 @@ if(BUILD_TESTING)
     target_link_libraries(quirewise_page_uvz_parser_test PRIVATE Quirewise::Page)
     add_test(NAME quirewise_page_uvz_parser
         COMMAND quirewise_page_uvz_parser_test)
+
+    # First-party DjVu decoder units (IFF container, ZP coder, BZZ stream).
+    # They are compiled directly into the test executables so the internal
+    # modules do not need to be exported from a shared build.
+    add_executable(quirewise_page_djvu_iff_test
+        tests/djvu_iff_test.c
+        src/formats/djvu/djvu_iff.c)
+    target_compile_features(quirewise_page_djvu_iff_test PRIVATE c_std_11)
+    target_include_directories(quirewise_page_djvu_iff_test PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/formats/djvu")
+    target_compile_definitions(quirewise_page_djvu_iff_test PRIVATE
+        QUIREWISE_DJVU_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/tests/data/djvu")
+    add_test(NAME quirewise_page_djvu_iff
+        COMMAND quirewise_page_djvu_iff_test)
+
+    add_executable(quirewise_page_djvu_bzz_test
+        tests/djvu_bzz_test.c
+        src/formats/djvu/djvu_bzz.c
+        src/formats/djvu/djvu_zp.c
+        src/formats/djvu/djvu_zp_table.c
+        src/formats/djvu/djvu_iff.c)
+    target_compile_features(quirewise_page_djvu_bzz_test PRIVATE c_std_11)
+    target_include_directories(quirewise_page_djvu_bzz_test PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/formats/djvu")
+    target_compile_definitions(quirewise_page_djvu_bzz_test PRIVATE
+        QUIREWISE_DJVU_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/tests/data/djvu")
+    add_test(NAME quirewise_page_djvu_bzz
+        COMMAND quirewise_page_djvu_bzz_test)
 endif()
 target_link_libraries(quirewise_page PUBLIC Quirewise::Runtime)
