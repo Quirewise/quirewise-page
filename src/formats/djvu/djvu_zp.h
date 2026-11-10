@@ -49,4 +49,7 @@ int qw_djvu_zp_decode(QwDjvuZp *zp, uint8_t *ctx);
 /* Decode one bit with a fixed 0.5 probability context (no adaptation). */
 int qw_djvu_zp_decode_pass(QwDjvuZp *zp);
 
+/* Decode one bit with the IW44 fixed probability (0.5 + 3a/8). */
+int qw_djvu_zp_decode_iw(QwDjvuZp *zp);
+
 #endif

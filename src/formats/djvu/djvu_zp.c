@@ -135,6 +135,12 @@ int qw_djvu_zp_decode_pass(QwDjvuZp *zp)
     return zp_decode_simple(zp, 0, 0x8000u + (zp->a >> 1));
 }
 
+int qw_djvu_zp_decode_iw(QwDjvuZp *zp)
+{
+    uint32_t z = 0x8000u + ((zp->a + zp->a + zp->a) >> 3);
+    return zp_decode_simple(zp, 0, z);
+}
+
 void qw_djvu_zp_init(QwDjvuZp *zp, const uint8_t *data, size_t size)
 {
     int i;
