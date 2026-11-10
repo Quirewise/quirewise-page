@@ -1,9 +1,9 @@
 #include "quirewise/djvu.h"
 
+#include "djvu_doc.h"
 #include "djvu_parser.h"
 #include "format_registry.h"
 #include "quirewise/page_status.h"
-#include "vendor/djvu.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -23,28 +23,6 @@ static QwDjvuStatus djvu_map_status(int status)
     }
 }
 
-static djvu_doc *djvu_open_document(const void *data, size_t size,
-                                    djvu_ctx **out_ctx)
-{
-    djvu_ctx *ctx;
-    djvu_doc *doc;
-    size_t parsed_pages = 0u;
-    if (!data || size < 16u || size > QW_DJVU_MAX_INPUT) return NULL;
-    if (!qw_djvu_probe(data, size)) return NULL;
-    if (qw_djvu_parse_page_count(data, size, &parsed_pages) != QW_PAGE_OK)
-        return NULL;
-    djvu_init();
-    ctx = djvu_ctx_new(NULL, NULL, NULL, NULL, NULL, NULL);
-    if (!ctx) return NULL;
-    doc = djvu_doc_open(ctx, (const uint8_t *)data, size);
-    if (!doc) {
-        djvu_ctx_free(ctx);
-        return NULL;
-    }
-    *out_ctx = ctx;
-    return doc;
-}
-
 uint32_t qw_djvu_abi_version(void)
 {
     return QUIREWISE_DJVU_ABI_VERSION;
@@ -58,48 +36,47 @@ int qw_djvu_is_supported(const void *data, size_t size)
 QwDjvuStatus qw_djvu_get_page_count(const void *data, size_t size,
                                     size_t *out_page_count)
 {
-    djvu_ctx *ctx = NULL;
-    djvu_doc *doc;
-    int count;
+    size_t count = 0u;
+
     if (out_page_count) *out_page_count = 0u;
     if (!out_page_count) return QW_DJVU_ERR_INVALID_ARGUMENT;
     if (!data || size > QW_DJVU_MAX_INPUT) return QW_DJVU_ERR_INVALID_ARGUMENT;
     if (!qw_djvu_probe(data, size)) return QW_DJVU_ERR_UNSUPPORTED;
-    doc = djvu_open_document(data, size, &ctx);
-    if (!doc) return QW_DJVU_ERR_FORMAT;
-    count = djvu_doc_page_count(doc);
-    djvu_doc_close(doc);
-    djvu_ctx_free(ctx);
-    if (count <= 0 || count > QW_DJVU_MAX_PAGES) return QW_DJVU_ERR_FORMAT;
-    *out_page_count = (size_t)count;
+    {
+        int rc = qw_djvu_parse_page_count(data, size, &count);
+        if (rc != QW_PAGE_OK) return djvu_map_status(rc);
+    }
+    if (count == 0u || count > QW_DJVU_MAX_PAGES) return QW_DJVU_ERR_FORMAT;
+    *out_page_count = count;
     return QW_DJVU_OK;
 }
 
 QwDjvuStatus qw_djvu_get_page_info(const void *data, size_t size,
                                    size_t page_index, QwDjvuPageInfo *out_info)
 {
-    djvu_ctx *ctx = NULL;
-    djvu_doc *doc;
-    djvu_page_info info;
+    QwDjvuDoc *doc = NULL;
+    QwDjvuDocPageInfo info;
+
     if (!out_info) return QW_DJVU_ERR_INVALID_ARGUMENT;
     memset(out_info, 0, sizeof(*out_info));
     if (!data || size > QW_DJVU_MAX_INPUT) return QW_DJVU_ERR_INVALID_ARGUMENT;
     if (page_index > (size_t)QW_DJVU_MAX_PAGES) return QW_DJVU_ERR_INVALID_ARGUMENT;
-    doc = djvu_open_document(data, size, &ctx);
-    if (!doc) return QW_DJVU_ERR_UNSUPPORTED;
-    if (djvu_doc_page_info(doc, (int)page_index, &info) != 0) {
-        djvu_doc_close(doc);
-        djvu_ctx_free(ctx);
+    if (qw_djvu_doc_open((const uint8_t *)data, size, &doc) != 0)
+        return QW_DJVU_ERR_UNSUPPORTED;
+    if ((int)page_index >= qw_djvu_doc_page_count(doc)) {
+        qw_djvu_doc_free(doc);
         return QW_DJVU_ERR_FORMAT;
     }
-    djvu_doc_close(doc);
-    djvu_ctx_free(ctx);
-    if (info.width <= 0 || info.height <= 0) return QW_DJVU_ERR_FORMAT;
+    if (qw_djvu_doc_page_info(doc, (int)page_index, &info) != 0) {
+        qw_djvu_doc_free(doc);
+        return QW_DJVU_ERR_FORMAT;
+    }
+    qw_djvu_doc_free(doc);
     out_info->width = (size_t)info.width;
     out_info->height = (size_t)info.height;
-    out_info->dpi = (unsigned)info.dpi;
-    out_info->version = (unsigned)info.version;
-    out_info->rotation = (unsigned)info.rotation;
+    out_info->dpi = info.dpi;
+    out_info->version = info.version;
+    out_info->rotation = info.rotation;
     return QW_DJVU_OK;
 }
 
@@ -107,67 +84,56 @@ QwDjvuStatus qw_djvu_render_page(const void *data, size_t size,
                                  size_t page_index, unsigned subsample,
                                  QwDjvuImage *out_image)
 {
-    djvu_ctx *ctx = NULL;
-    djvu_doc *doc;
-    djvu_image *image = NULL;
-    QwDjvuStatus status = QW_DJVU_OK;
+    QwDjvuDoc *doc = NULL;
+    QwDjvuDocPageInfo info;
+    QwDjvuDocPageInfo check;
+    uint8_t *pixels = NULL;
+    size_t pixel_size = 0;
+    int width = 0;
+    int height = 0;
+    int channels = 0;
+    int rc;
+
     if (!out_image) return QW_DJVU_ERR_INVALID_ARGUMENT;
     memset(out_image, 0, sizeof(*out_image));
     if (!data || size > QW_DJVU_MAX_INPUT || subsample == 0u)
         return QW_DJVU_ERR_INVALID_ARGUMENT;
     if (page_index > (size_t)QW_DJVU_MAX_PAGES) return QW_DJVU_ERR_INVALID_ARGUMENT;
-    doc = djvu_open_document(data, size, &ctx);
-    if (!doc) return QW_DJVU_ERR_UNSUPPORTED;
-    {
-        djvu_page_info info;
-        if (djvu_doc_page_info(doc, (int)page_index, &info) != 0 ||
-            info.width <= 0 || info.height <= 0) {
-            djvu_doc_close(doc);
-            djvu_ctx_free(ctx);
-            return QW_DJVU_ERR_FORMAT;
-        }
-        if ((size_t)info.width * (size_t)info.height > QW_DJVU_MAX_PIXELS) {
-            djvu_doc_close(doc);
-            djvu_ctx_free(ctx);
-            return QW_DJVU_ERR_RESOURCE_LIMIT;
-        }
+    if (qw_djvu_doc_open((const uint8_t *)data, size, &doc) != 0)
+        return QW_DJVU_ERR_UNSUPPORTED;
+    if ((int)page_index >= qw_djvu_doc_page_count(doc)) {
+        qw_djvu_doc_free(doc);
+        return QW_DJVU_ERR_FORMAT;
     }
-    image = djvu_page_render(doc, (int)page_index, (int)subsample);
-    if (!image) {
-        status = QW_DJVU_ERR_FORMAT;
-    } else if (image->width <= 0 || image->height <= 0 ||
-               (image->format != DJVU_FORMAT_GRAY8 &&
-                image->format != DJVU_FORMAT_RGB24) ||
-               image->stride <= 0) {
-        status = QW_DJVU_ERR_FORMAT;
-    } else {
-        size_t row_bytes = (size_t)image->width *
-                           (image->format == DJVU_FORMAT_RGB24 ? 3u : 1u);
-        size_t total = row_bytes * (size_t)image->height;
-        uint8_t *copy = (uint8_t *)malloc(total ? total : 1u);
-        int row;
-        if (!copy) {
-            status = QW_DJVU_ERR_RESOURCE_LIMIT;
-        } else {
-            for (row = 0; row < image->height; ++row) {
-                memcpy(copy + (size_t)row * row_bytes,
-                       image->data + (size_t)row * (size_t)image->stride,
-                       row_bytes);
-            }
-            out_image->width = (size_t)image->width;
-            out_image->height = (size_t)image->height;
-            out_image->stride = row_bytes;
-            out_image->format = image->format == DJVU_FORMAT_RGB24
-                                    ? QW_DJVU_PIXEL_RGB24
-                                    : QW_DJVU_PIXEL_GRAY8;
-            out_image->pixels = copy;
-            out_image->size = total;
-        }
+    if (qw_djvu_doc_page_info(doc, (int)page_index, &info) != 0) {
+        qw_djvu_doc_free(doc);
+        return QW_DJVU_ERR_FORMAT;
     }
-    if (image) djvu_image_destroy(ctx, image);
-    djvu_doc_close(doc);
-    djvu_ctx_free(ctx);
-    return status;
+    if ((size_t)info.width * (size_t)info.height > QW_DJVU_MAX_PIXELS) {
+        qw_djvu_doc_free(doc);
+        return QW_DJVU_ERR_RESOURCE_LIMIT;
+    }
+    rc = qw_djvu_doc_render(doc, (int)page_index, subsample, &pixels,
+                            &pixel_size, &width, &height, &channels);
+    if (rc == -2) {
+        qw_djvu_doc_free(doc);
+        return QW_DJVU_ERR_RESOURCE_LIMIT;
+    }
+    if (rc != 0 || !pixels || width <= 0 || height <= 0 ||
+        (channels != 1 && channels != 3)) {
+        free(pixels);
+        qw_djvu_doc_free(doc);
+        return QW_DJVU_ERR_FORMAT;
+    }
+    (void)check;
+    out_image->width = (size_t)width;
+    out_image->height = (size_t)height;
+    out_image->stride = (size_t)width * (size_t)channels;
+    out_image->format = channels == 3 ? QW_DJVU_PIXEL_RGB24 : QW_DJVU_PIXEL_GRAY8;
+    out_image->pixels = pixels;
+    out_image->size = pixel_size;
+    qw_djvu_doc_free(doc);
+    return QW_DJVU_OK;
 }
 
 void qw_djvu_image_free(QwDjvuImage *image)
@@ -181,44 +147,33 @@ QwDjvuStatus qw_djvu_extract_text(const void *data, size_t size,
                                   size_t page_index, char **out_text,
                                   size_t *out_size)
 {
-    djvu_ctx *ctx = NULL;
-    djvu_doc *doc;
-    char *text;
-    char *copy;
+    QwDjvuDoc *doc = NULL;
+    char *text = NULL;
+    size_t text_len = 0;
+
     if (out_text) *out_text = NULL;
     if (out_size) *out_size = 0u;
     if (!out_text || !out_size) return QW_DJVU_ERR_INVALID_ARGUMENT;
     if (!data || size > QW_DJVU_MAX_INPUT) return QW_DJVU_ERR_INVALID_ARGUMENT;
     if (page_index > (size_t)QW_DJVU_MAX_PAGES) return QW_DJVU_ERR_INVALID_ARGUMENT;
-    doc = djvu_open_document(data, size, &ctx);
-    if (!doc) return QW_DJVU_ERR_UNSUPPORTED;
-    text = djvu_page_text(doc, (int)page_index);
-    if (!text) {
-        copy = (char *)malloc(1u);
-        if (!copy) {
-            djvu_doc_close(doc);
-            djvu_ctx_free(ctx);
-            return QW_DJVU_ERR_RESOURCE_LIMIT;
-        }
-        copy[0] = '\0';
-        *out_text = copy;
-        *out_size = 0u;
-    } else {
-        size_t length = strlen(text);
-        copy = (char *)malloc(length + 1u);
-        if (!copy) {
-            djvu_text_destroy(ctx, text);
-            djvu_doc_close(doc);
-            djvu_ctx_free(ctx);
-            return QW_DJVU_ERR_RESOURCE_LIMIT;
-        }
-        memcpy(copy, text, length + 1u);
-        *out_text = copy;
-        *out_size = length;
-        djvu_text_destroy(ctx, text);
+    if (qw_djvu_doc_open((const uint8_t *)data, size, &doc) != 0)
+        return QW_DJVU_ERR_UNSUPPORTED;
+    if ((int)page_index >= qw_djvu_doc_page_count(doc)) {
+        qw_djvu_doc_free(doc);
+        return QW_DJVU_ERR_FORMAT;
     }
-    djvu_doc_close(doc);
-    djvu_ctx_free(ctx);
+    if (qw_djvu_doc_text(doc, (int)page_index, &text, &text_len) != 0) {
+        qw_djvu_doc_free(doc);
+        text = (char *)malloc(1u);
+        if (!text) return QW_DJVU_ERR_RESOURCE_LIMIT;
+        text[0] = '\0';
+        *out_text = text;
+        *out_size = 0u;
+        return QW_DJVU_OK;
+    }
+    qw_djvu_doc_free(doc);
+    *out_text = text;
+    *out_size = text_len;
     return QW_DJVU_OK;
 }
 
