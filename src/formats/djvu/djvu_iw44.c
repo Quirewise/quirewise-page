@@ -356,7 +356,7 @@ static void filter_bv(int16_t *p, int w, int h, int rowsize, int scale)
                 while (q < e) {
                     int a = (int)q[-s] + (int)q[s];
                     int b = (int)q[-s3] + (int)q[s3];
-                    *q = (int16_t)(*q - (((a << 3) + a - b + 16) >> 5));
+                    *q = (int16_t)(*q - (((a * 8) + a - b + 16) >> 5));
                     q += scale;
                 }
             } else if (y < rows) {
@@ -366,7 +366,7 @@ static void filter_bv(int16_t *p, int w, int h, int rowsize, int scale)
                     while (q < e) {
                         int a = (int)q[-s] + (q1 ? (int)*q1 : 0);
                         int b = (int)q[-s3] + (q3 ? (int)*q3 : 0);
-                        *q = (int16_t)(*q - (((a << 3) + a - b + 16) >> 5));
+                        *q = (int16_t)(*q - (((a * 8) + a - b + 16) >> 5));
                         q += scale;
                         if (q1) q1 += scale;
                         if (q3) q3 += scale;
@@ -375,7 +375,7 @@ static void filter_bv(int16_t *p, int w, int h, int rowsize, int scale)
                     while (q < e) {
                         int a = (int)q[-s] + (q1 ? (int)*q1 : 0);
                         int b = (q3 ? (int)*q3 : 0);
-                        *q = (int16_t)(*q - (((a << 3) + a - b + 16) >> 5));
+                        *q = (int16_t)(*q - (((a * 8) + a - b + 16) >> 5));
                         q += scale;
                         if (q1) q1 += scale;
                         if (q3) q3 += scale;
@@ -384,7 +384,7 @@ static void filter_bv(int16_t *p, int w, int h, int rowsize, int scale)
                     while (q < e) {
                         int a = q1 ? (int)*q1 : 0;
                         int b = q3 ? (int)*q3 : 0;
-                        *q = (int16_t)(*q - (((a << 3) + a - b + 16) >> 5));
+                        *q = (int16_t)(*q - (((a * 8) + a - b + 16) >> 5));
                         q += scale;
                         if (q1) q1 += scale;
                         if (q3) q3 += scale;
@@ -399,7 +399,7 @@ static void filter_bv(int16_t *p, int w, int h, int rowsize, int scale)
                 while (q < e) {
                     int a = (int)q[-s] + (int)q[s];
                     int b = (int)q[-s3] + (int)q[s3];
-                    *q = (int16_t)(*q + (((a << 3) + a - b + 8) >> 4));
+                    *q = (int16_t)(*q + (((a * 8) + a - b + 8) >> 4));
                     q += scale;
                 }
             } else if (y >= 3) {
@@ -427,7 +427,7 @@ static void filter_bh_row(int16_t *p, int w, int s, int s3)
     if (q < e) {
         if (q + s < e) a2 = q[s];
         if (q + s3 < e) a3 = q[s3];
-        b2 = b3 = q[0] - ((((a1 + a2) << 3) + (a1 + a2) - a0 - a3 + 16) >> 5);
+        b2 = b3 = q[0] - ((((a1 + a2) * 8) + (a1 + a2) - a0 - a3 + 16) >> 5);
         q[0] = (int16_t)b3;
         q += s + s;
     }
@@ -436,7 +436,7 @@ static void filter_bh_row(int16_t *p, int w, int s, int s3)
         a1 = a2;
         a2 = a3;
         if (q + s3 < e) a3 = q[s3];
-        b3 = q[0] - ((((a1 + a2) << 3) + (a1 + a2) - a0 - a3 + 16) >> 5);
+        b3 = q[0] - ((((a1 + a2) * 8) + (a1 + a2) - a0 - a3 + 16) >> 5);
         q[0] = (int16_t)b3;
         q += s + s;
     }
@@ -447,7 +447,7 @@ static void filter_bh_row(int16_t *p, int w, int s, int s3)
         a1 = a2;
         a2 = a3;
         if (q + s3 < e) a3 = q[s3];
-        b3 = q[0] - ((((a1 + a2) << 3) + (a1 + a2) - a0 - a3 + 16) >> 5);
+        b3 = q[0] - ((((a1 + a2) * 8) + (a1 + a2) - a0 - a3 + 16) >> 5);
         q[0] = (int16_t)b3;
         q[-s3] = (int16_t)(q[-s3] + ((b1 + b2 + 1) >> 1));
         q += s + s;
@@ -460,10 +460,10 @@ static void filter_bh_row(int16_t *p, int w, int s, int s3)
         b0 = b1;
         b1 = b2;
         b2 = b3;
-        b3 = q[0] - ((((a1 + a2) << 3) + (a1 + a2) - a0 - a3 + 16) >> 5);
+        b3 = q[0] - ((((a1 + a2) * 8) + (a1 + a2) - a0 - a3 + 16) >> 5);
         q[0] = (int16_t)b3;
         q[-s3] = (int16_t)(q[-s3] +
-                           ((((b1 + b2) << 3) + (b1 + b2) - b0 - b3 + 8) >> 4));
+                           ((((b1 + b2) * 8) + (b1 + b2) - b0 - b3 + 8) >> 4));
         q += s + s;
     }
     while (q < e) {
@@ -474,10 +474,10 @@ static void filter_bh_row(int16_t *p, int w, int s, int s3)
         b0 = b1;
         b1 = b2;
         b2 = b3;
-        b3 = q[0] - ((((a1 + a2) << 3) + (a1 + a2) - a0 - a3 + 16) >> 5);
+        b3 = q[0] - ((((a1 + a2) * 8) + (a1 + a2) - a0 - a3 + 16) >> 5);
         q[0] = (int16_t)b3;
         q[-s3] = (int16_t)(q[-s3] +
-                           ((((b1 + b2) << 3) + (b1 + b2) - b0 - b3 + 8) >> 4));
+                           ((((b1 + b2) * 8) + (b1 + b2) - b0 - b3 + 8) >> 4));
         q += s + s;
     }
     while (q - s3 < e) {
@@ -755,7 +755,7 @@ int qw_djvu_iw44_render_rgb(const struct QwDjvuIw44Image *image, uint8_t *rgb)
                 int t3 = yv + 128 - t1;
                 int tr = yv + 128 + t2;
                 int tg = t3 - (t2 >> 1);
-                int tb = t3 + (bv << 1);
+                int tb = t3 + (bv * 2);
                 dst[0] = (uint8_t)clamp255(tr);
                 dst[1] = (uint8_t)clamp255(tg);
                 dst[2] = (uint8_t)clamp255(tb);
