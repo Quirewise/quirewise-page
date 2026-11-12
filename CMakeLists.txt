@@ -12,9 +12,6 @@ include(CMakePackageConfigHelpers)
 if(NOT TARGET Quirewise::Runtime)
     find_package(QuirewiseRuntime CONFIG REQUIRED)
 endif()
-if(NOT TARGET Quirewise::Image)
-    find_package(QuirewiseImage CONFIG REQUIRED)
-endif()
 if(NOT TARGET Quirewise::Archive)
     find_package(QuirewiseArchive CONFIG REQUIRED)
 endif()
@@ -34,7 +31,7 @@ target_include_directories(quirewise_page PUBLIC
     "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>"
     PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/src/core ${CMAKE_CURRENT_SOURCE_DIR}/src/formats ${CMAKE_CURRENT_SOURCE_DIR}/src/backends)
 target_link_libraries(quirewise_page PRIVATE
-    Quirewise::Image Quirewise::Archive Quirewise::Crypto
+    Quirewise::Archive Quirewise::Crypto
     Quirewise::Compression)
 # PDF/CAJ geometry needs libm; PUBLIC so static consumers inherit it and the
 # shared library records a real DT_NEEDED instead of exporting undefined
