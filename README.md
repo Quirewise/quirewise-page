@@ -14,8 +14,11 @@ Build with `cmake -S . -B build` and `cmake --build build`.
   directory prefix. Page order follows the SSReader naming convention: cover,
   title page, front matter (`fow`/`pre`), table of contents (`!`), body pages,
   attachments, back cover.
-- Other formats live in this package as well (PDF via the document package,
-  DjVu, CEB) and follow the same page API.
+- Other formats live in this package as well (DjVu, CEB and CAJ) and follow the
+  same page API. CAJ exposes page images, figures, text and outlines, including
+  classic-CAJ PDF extraction and KDH decryption.
+- PDF is **not** a page-package API: `quirewise-document` owns PDF reading,
+  rendering and merging, and the application composes the two packages.
 - `qw_format_uvz` is exported for consumers that resolve formats themselves;
   like the CEB and DjVu descriptors it is not part of the shared registry, so a
   standalone page install does not depend on the application.
