@@ -21,6 +21,7 @@ typedef enum QwCebStatus {
 /* The result is a complete PDF buffer owned by the caller. */
 QwCebStatus qw_ceb_decrypt_to_pdf(const void *data, size_t size,
                                   uint8_t **out_pdf, size_t *out_size);
+/*! Release PDF bytes extracted from a CEB archive; NULL is accepted. */
 void qw_ceb_pdf_free(uint8_t *pdf);
 
 #ifdef __cplusplus

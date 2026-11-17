@@ -29,7 +29,9 @@ typedef struct QwUvzPageInfo {
 /* Input ZIP bytes are borrowed and must remain valid until document close. */
 QwUvzStatus qw_uvz_document_open(const void *data, size_t size,
                                  QwUvzDocument **out_document);
+/*! Return the number of pages in the archive. */
 size_t qw_uvz_document_page_count(const QwUvzDocument *document);
+/*! Fill one page's size and format. */
 QwUvzStatus qw_uvz_document_page_info(const QwUvzDocument *document,
                                       size_t page_index,
                                       QwUvzPageInfo *out_info);
@@ -39,7 +41,9 @@ QwUvzStatus qw_uvz_document_read_page(QwUvzDocument *document,
                                       size_t page_index,
                                       uint8_t **out_data,
                                       size_t *out_size);
+/*! Release a document returned by the parser; NULL is accepted. */
 void qw_uvz_page_data_free(uint8_t *data);
+/*! Close an archive opened by the parser; NULL is accepted. */
 void qw_uvz_document_close(QwUvzDocument *document);
 
 #ifdef __cplusplus
