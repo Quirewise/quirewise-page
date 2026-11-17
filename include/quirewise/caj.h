@@ -55,10 +55,13 @@ typedef struct QwCajClassicOutlineInfo {
 /* The input buffer is borrowed and must remain valid until document close. */
 QwCajStatus qw_caj_document_open(const void *data, size_t size,
                                 QwCajDocument **out_document);
+/*! Return the number of pages in the document. */
 size_t qw_caj_document_page_count(const QwCajDocument *document);
+/*! Fill per-page metadata: figure count, text size and layout flags. */
 QwCajStatus qw_caj_document_page_info(const QwCajDocument *document,
                                       size_t page_index,
                                       QwCajPageInfo *out_info);
+/*! Return one figure record (kind, borrowed bytes, position) for a page. */
 QwCajStatus qw_caj_document_figure_info(const QwCajDocument *document,
                                         size_t page_index,
                                         size_t figure_index,
@@ -72,20 +75,26 @@ QwCajStatus qw_caj_document_page_text(const QwCajDocument *document,
 QwCajStatus qw_caj_classic_outlines_parse(
     const void *data, size_t size,
     QwCajClassicOutlineList **out_outlines);
+/*! Return the number of parsed classic outline entries. */
 size_t qw_caj_classic_outline_count(
     const QwCajClassicOutlineList *outlines);
+/*! Return one classic outline entry by index. */
 QwCajStatus qw_caj_classic_outline_get(
     const QwCajClassicOutlineList *outlines, size_t index,
     QwCajClassicOutlineInfo *out_info);
+/*! Release an outline list; NULL is accepted. */
 void qw_caj_classic_outlines_free(QwCajClassicOutlineList *outlines);
 /* Outputs are owned and released with qw_caj_pdf_data_free. */
 QwCajStatus qw_caj_extract_classic_pdf(const void *data, size_t size,
                                        uint8_t **out_pdf,
                                        size_t *out_pdf_size);
+/*! Decrypt a KDH-protected PDF and return the plain bytes. */
 QwCajStatus qw_caj_decrypt_kdh_pdf(const void *data, size_t size,
                                    uint8_t **out_pdf,
                                    size_t *out_pdf_size);
+/*! Release PDF bytes returned by the CAJ extract or decrypt functions. */
 void qw_caj_pdf_data_free(uint8_t *pdf_data);
+/*! Close a document opened by qw_caj_document_open(). */
 void qw_caj_document_close(QwCajDocument *document);
 
 #ifdef __cplusplus
