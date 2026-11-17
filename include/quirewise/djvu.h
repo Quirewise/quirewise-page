@@ -30,6 +30,7 @@ typedef enum QwDjvuStatus {
     QW_DJVU_ERR_RESOURCE_LIMIT = -4
 } QwDjvuStatus;
 
+/*! Return the ABI version compiled into the installed page package. */
 QUIREWISE_DJVU_API uint32_t qw_djvu_abi_version(void);
 
 /* Returns 1 when the input has a DjVu single-page or multipage signature. */
@@ -47,6 +48,7 @@ typedef struct QwDjvuPageInfo {
     unsigned rotation; /* 0, 90, 180 or 270 degrees clockwise */
 } QwDjvuPageInfo;
 
+/*! Fill page geometry and text-layer availability for a page index. */
 QUIREWISE_DJVU_API QwDjvuStatus qw_djvu_get_page_info(
     const void *data, size_t size, size_t page_index, QwDjvuPageInfo *out_info);
 
@@ -68,14 +70,17 @@ typedef struct QwDjvuImage {
 QUIREWISE_DJVU_API QwDjvuStatus qw_djvu_render_page(
     const void *data, size_t size, size_t page_index, unsigned subsample,
     QwDjvuImage *out_image);
+/*! Release pixels returned by the renderer; NULL is accepted. */
 QUIREWISE_DJVU_API void qw_djvu_image_free(QwDjvuImage *image);
 
 /* Returns the hidden-text layer as NUL-terminated UTF-8, or "" when absent. */
 QUIREWISE_DJVU_API QwDjvuStatus qw_djvu_extract_text(
     const void *data, size_t size, size_t page_index, char **out_text,
     size_t *out_size);
+/*! Release a text layer returned by the reader; NULL is accepted. */
 QUIREWISE_DJVU_API void qw_djvu_text_free(char *text);
 
+/*! Return a static human-readable name for a status code. */
 QUIREWISE_DJVU_API const char *qw_djvu_status_string(int status);
 
 #ifdef __cplusplus
